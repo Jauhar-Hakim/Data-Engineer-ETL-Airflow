@@ -15,8 +15,8 @@ default_args = {
     'owner': 'admin',
     'depends_on_past': False,
     'start_date': days_ago(0),  # Start the DAG from yesterday
-    'retries': 3,
-    'retry_delay': timedelta(minutes=5),
+    'retries': 3, # Retry 3 times if there is something wrong
+    'retry_delay': timedelta(minutes=5), # Retry interval is 5 minutes
 }
 
 # Initialize the DAG
@@ -28,6 +28,8 @@ dag = DAG(
 )
 
 # Task 1: Create Database and Table if Not Exist
+# Create new database namely sakila_star in case sakila_star not exist
+# Create 5 table that represent new star scheme if that table not exist, with corresponding type of data and key every table
 task_1_query = """
 CREATE DATABASE IF NOT EXISTS sakila_star;
 CREATE TABLE IF NOT EXISTS `sakila_star`.`dim_customer` (
@@ -177,6 +179,7 @@ CREATE TABLE IF NOT EXISTS `sakila_star`.`fact_transaction` (
         ON UPDATE NO ACTION);
 """
 
+# Using MySqlOperator to run MySql query
 mysql_task_1 = MySqlOperator(
     task_id="create_table",
     sql=task_1_query,
@@ -191,6 +194,10 @@ yesterday = date.today() - timedelta(days=1)
 str_yesterday = str(yesterday)
 
 # Insert new data from sakila databases to sakila_star based on yesterday last update
+# Using Insert Into from original database that already querying for data that update yesterday to input new data (or updated data) to sakila_star
+# Using WHERE DATE(SCUS.last_update) = '{ysd}' to refer yesterday, and
+# that means this airflow dags can run daily without burden of transforming all data in old database
+# Using ON DUPLICATE KEY UPDATE to update data in new database when there is some changes in old database
 task_2_query = """
 INSERT INTO sakila_star.dim_customer(customer_key,customer_last_update,customer_id,
                                      customer_first_name,customer_last_name,customer_email,
@@ -228,6 +235,7 @@ ON DUPLICATE KEY UPDATE
     customer_create_date = SCUS.create_date;""".format(ysd=str_yesterday)
 
 
+# Define function to detect is there any data that insert yesterday or not
 def check_records_task_2():
     # Your SQL query to count records
     query = """
@@ -262,6 +270,7 @@ mysql_task_2_execute_next = MySqlOperator(
 # Task to handle the case when no records are found
 mysql_task_2_no_records_task = DummyOperator(task_id="mysql_task_2_no_records_task", dag=dag)
 
+# Task 3 - Task 6 (Final Task) is quite repetitive like taks 2
 # Task 3: Insert New Yesterday Data From Sakila Database to Sakila_Star Database Dimension Store Table
 task_3_query = """
 INSERT INTO sakila_star.dim_store(store_key, store_last_update, store_id, store_address_id, store_address,
@@ -531,6 +540,7 @@ mysql_task_6_execute_next = MySqlOperator(
 mysql_task_6_no_records_task = DummyOperator(task_id="mysql_task_6_no_records_task", dag=dag)
 
 # Set up task dependencies
+# For defining flow of architechture
 mysql_task_1 >> mysql_task_2_check_records_task
 mysql_task_2_check_records_task >> [mysql_task_2_execute_next, mysql_task_2_no_records_task]
 [mysql_task_2_execute_next, mysql_task_2_no_records_task] >> mysql_task_3_check_records_task
