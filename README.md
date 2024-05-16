@@ -1,4 +1,4 @@
-# Data-Engineer-Test
+# Data-Engineer-ETL-Airflow
 Demonstrating data engineering skill in sakila database at MySQL website. Make new star scheme database based on sakila database and Airflow DAGs that run daily.
 
 ## Original Sakila Database ERR Diagram
